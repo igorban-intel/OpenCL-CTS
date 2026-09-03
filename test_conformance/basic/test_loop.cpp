@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "testBase.h"
@@ -89,13 +90,28 @@ REGISTER_TEST(loop)
     }
 
     RandomSeed seed(gRandomSeed);
+    int max_loop_count = 0;
     for (int i = 0; i < num_elements; i++)
     {
-        input[i] = static_cast<int>(genrand_int32(seed));
         loop_indx[i] =
             static_cast<int>(get_random_float(0, num_elements - 1, seed));
         loop_cnt[i] =
             static_cast<int>(get_random_float(0, num_elements / 32, seed));
+        max_loop_count = std::max(max_loop_count, loop_cnt[i]);
+    };
+
+    // The kernel accumulates up to max_loop_count inputs into a single int, so
+    // bound every value to +/- CL_INT_MAX / max_loop_count. Every accumulation
+    // is then representable and the arithmetic stays defined.
+    const cl_uint max_input = max_loop_count == 0
+        ? (cl_uint)CL_INT_MAX
+        : (cl_uint)CL_INT_MAX / (cl_uint)max_loop_count;
+    const cl_ulong input_range = 2 * (cl_ulong)max_input + 1;
+    for (int i = 0; i < num_elements; i++)
+    {
+        input[i] = static_cast<cl_int>(
+            static_cast<cl_long>(genrand_int32(seed) % input_range)
+            - max_input);
     };
 
     err = clEnqueueWriteBuffer(queue, streams[0], CL_TRUE, 0, length,

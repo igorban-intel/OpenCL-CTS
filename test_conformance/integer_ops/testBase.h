@@ -17,6 +17,7 @@
 #define _testBase_h
 
 #include "harness/compat.h"
+#include "harness/conversions.h"
 #include "harness/errorHelpers.h"
 #include "harness/kernelHelpers.h"
 #include "harness/testHarness.h"
@@ -32,6 +33,39 @@
 
 extern void fill_test_values(cl_long *outBufferA, cl_long *outBufferB,
                              size_t numElements, MTdata d);
+
+// The "+", "-" and "*" integer tests fill both operands with full range random
+// values. OpenCL C section 6.3 applies the C99 usual arithmetic conversions, so
+// an operation whose signed result is not representable is undefined; the
+// wrap-around guarantee of section 6.3.11 is scoped to atomics. Only three
+// cases can actually get there:
+//
+//   int, long  operands keep their own width, so "+", "-" and "*" all overflow.
+//   ushort     a scalar operand is promoted to int, and only the product of two
+//              ushorts can leave the int range.
+//
+// char, uchar and short are promoted to int as well and their results always
+// fit; uint and ulong wrap by definition. Those five types are left alone so
+// that their full range and corner case coverage is preserved.
+enum DefinedArithmeticOp
+{
+    kDefinedAdd,
+    kDefinedSub,
+    kDefinedMul
+};
+
+// Maps an operator spelling onto the enum above. Returns false for every
+// operator whose operands do not need to be bounded.
+extern bool get_defined_arithmetic_op(const char *opName,
+                                      DefinedArithmeticOp *op);
+
+// Rewrites both operands in place with random values whose combination under
+// `op` is representable, and leaves them untouched for the types that cannot
+// overflow.
+extern void init_defined_arithmetic_data(ExplicitType type,
+                                         DefinedArithmeticOp op,
+                                         int num_elements, void *inputA,
+                                         void *inputB, MTdata d);
 
 #endif // _testBase_h
 

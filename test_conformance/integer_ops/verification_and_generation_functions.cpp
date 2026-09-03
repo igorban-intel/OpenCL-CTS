@@ -81,6 +81,113 @@ const char *test_names[] = {
 };
 
 // =======================================
+// defined arithmetic inputs
+// =======================================
+
+// floor(sqrt(TYPE_MAX)): the largest operand whose square is representable.
+#define INT_MUL_BOUND 46340
+#define LONG_MUL_BOUND 3037000499LL
+// A scalar ushort is promoted to int before the multiply, so the product has to
+// fit in an int rather than in a ushort.
+#define USHORT_MUL_BOUND 46340
+
+// Writes `count` random values in [-bound, bound] to each operand, then seeds
+// the leading elements with the cross product of the corner values, mirroring
+// what the unbounded init_*_data() generators do.
+template <typename T>
+static void fill_bounded_signed(void *inputA, void *inputB, int count,
+                                cl_long bound, MTdata d)
+{
+    T *a = (T *)inputA;
+    T *b = (T *)inputB;
+    const cl_ulong range = 2 * (cl_ulong)bound + 1;
+
+    for (int i = 0; i < count; i++)
+    {
+        a[i] = (T)((cl_long)(genrand_int64(d) % range) - bound);
+        b[i] = (T)((cl_long)(genrand_int64(d) % range) - bound);
+    }
+
+    const cl_long corners[] = { 0, -1, 1, -bound, bound };
+    const int num_corners = (int)(sizeof(corners) / sizeof(corners[0]));
+    int index = 0;
+    for (int x = 0; x < num_corners; x++)
+        for (int y = 0; y < num_corners && index < count; y++)
+        {
+            a[index] = (T)corners[x];
+            b[index] = (T)corners[y];
+            index++;
+        }
+}
+
+template <typename T>
+static void fill_bounded_unsigned(void *inputA, void *inputB, int count,
+                                  cl_ulong bound, MTdata d)
+{
+    T *a = (T *)inputA;
+    T *b = (T *)inputB;
+    const cl_ulong range = bound + 1;
+
+    for (int i = 0; i < count; i++)
+    {
+        a[i] = (T)(genrand_int64(d) % range);
+        b[i] = (T)(genrand_int64(d) % range);
+    }
+
+    const cl_ulong corners[] = { 0, 1, bound };
+    const int num_corners = (int)(sizeof(corners) / sizeof(corners[0]));
+    int index = 0;
+    for (int x = 0; x < num_corners; x++)
+        for (int y = 0; y < num_corners && index < count; y++)
+        {
+            a[index] = (T)corners[x];
+            b[index] = (T)corners[y];
+            index++;
+        }
+}
+
+bool get_defined_arithmetic_op(const char *opName, DefinedArithmeticOp *op)
+{
+    if (strcmp(opName, "+") == 0)
+        *op = kDefinedAdd;
+    else if (strcmp(opName, "-") == 0)
+        *op = kDefinedSub;
+    else if (strcmp(opName, "*") == 0)
+        *op = kDefinedMul;
+    else
+        return false;
+
+    return true;
+}
+
+void init_defined_arithmetic_data(ExplicitType type, DefinedArithmeticOp op,
+                                  int num_elements, void *inputA, void *inputB,
+                                  MTdata d)
+{
+    switch (type)
+    {
+        case kInt:
+            fill_bounded_signed<cl_int>(
+                inputA, inputB, num_elements,
+                op == kDefinedMul ? INT_MUL_BOUND : CL_INT_MAX / 2, d);
+            break;
+        case kLong:
+            fill_bounded_signed<cl_long>(
+                inputA, inputB, num_elements,
+                op == kDefinedMul ? LONG_MUL_BOUND : CL_LONG_MAX / 2, d);
+            break;
+        case kUShort:
+            if (op == kDefinedMul)
+                fill_bounded_unsigned<cl_ushort>(inputA, inputB, num_elements,
+                                                 USHORT_MUL_BOUND, d);
+            break;
+        default:
+            // Cannot overflow: keep the unbounded inputs.
+            break;
+    }
+}
+
+// =======================================
 // long
 // =======================================
 int
